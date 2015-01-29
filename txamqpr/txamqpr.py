@@ -4,7 +4,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+# http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -72,7 +72,7 @@ class AmqpProtocol(AMQClient):
             yield self.chan.basic_qos(prefetch_count=self.factory.prefetch)
 
             self.connected = True
-            self.factory.deferred.callback(None)
+            reactor.callLater(0, self.factory.deferred.callback, None)
         except Exception as e:
             self.factory.deferred.errback(e)
 
@@ -107,8 +107,7 @@ class txAMQPReconnectingFactory(protocol.ReconnectingClientFactory):
         self.queue_binding_conf = queue_binding_conf
         self.queue_declare_conf = queue_declare_conf
         self.exchange_conf = exchange_conf
-        spec_file = spec_file or os.path.join(os.path.dirname(__file__),
-                                              'amqp0-8.stripped.rabbitmq.xml')
+        spec_file = spec_file or os.path.join(os.path.dirname(__file__), 'amqp0-8.stripped.rabbitmq.xml')
         self.spec = spec.load(spec_file)
         self.user = user
         self.password = password
@@ -120,9 +119,7 @@ class txAMQPReconnectingFactory(protocol.ReconnectingClientFactory):
 
         self.p = None  # The protocol instance.
         self.client = None  # Alias for protocol instance
-
         self.port = reactor.connectTCP(self.host, port, self)
-
 
     def buildProtocol(self, addr):
         self.client = self.protocol(factory=self,
@@ -146,9 +143,8 @@ class txAMQPReconnectingFactory(protocol.ReconnectingClientFactory):
         protocol.ReconnectingClientFactory.clientConnectionFailed(self, connector, reason)
 
     def basic_get(self, queue, no_ack):
-        if self.p and self.p.connected:
-            return self.p.basic_get(queue, no_ack)
-
+        # if self.p and self.p.connected:
+        #     return self.p.basic_get(queue, no_ack)
         result = self.deferred.addCallback(lambda *args: self.p.basic_get(queue, no_ack))
         return result
 

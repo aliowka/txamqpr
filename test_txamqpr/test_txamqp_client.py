@@ -4,7 +4,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+# http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -24,11 +24,14 @@ from txamqpr import txAMQPReconnectingFactory
 class MyTestCase(unittest.TestCase):
 
     def setUp(self):
-        self.published_counter = 0
         self.fetched_counter = 0
+        self.published_counter = 0
+        self.total_messages_to_send = 1000
+
         self.random_name = "test-txamqpr-client-%s" % random.randint(0, sys.maxint)
 
         rabbitmq_conf = {
+            "prefetch": 10,
             "exchange_conf": {
                 "exchange": self.random_name,
                 "type": "fanout",
@@ -38,7 +41,7 @@ class MyTestCase(unittest.TestCase):
                 "queue": self.random_name,
                 "durable": False,
                 "exclusive": False,
-                "arguments": {"x-expires": 30000}},
+                "arguments": {"x-expires": 180000}},
             "queue_binding_conf": {
                 "exchange": self.random_name,
                 "queue": self.random_name,
@@ -49,19 +52,23 @@ class MyTestCase(unittest.TestCase):
     def get_message(self, no_ack=True):
 
         def on_message(msg):
+            print msg
             if msg.method.name != "get-empty":
-                self.assertEqual(msg.content.body, "Hello")
-                return msg
+                self.fetched_counter += 1
+                self.assertEqual(msg.content.body, "Test message")
 
-            if hasattr(self, "disconnector"):
-                self.disconnector.stop()
-            self.message_getter.stop()
-            if self.show_stoper:
-                reactor.callLater(5, self.show_stoper.callback, None)
-                self.show_stoper = None
+            else:
+                if hasattr(self, "disconnector"):
+                    self.disconnector.stop()
+                self.message_getter.stop()
+                if self.show_stoper:
+                    reactor.callLater(5, self.show_stoper.callback, None)
+                    self.show_stoper = None
+            print "GET", self.fetched_counter
+            return msg
 
         def on_error(*args):
-            pass
+            print "Basic get failed:", args
 
         if no_ack:
             ack_callback = lambda msg: msg
@@ -71,12 +78,14 @@ class MyTestCase(unittest.TestCase):
         d = self.tx.basic_get(self.random_name, no_ack)
         d.addCallback(on_message).addCallback(ack_callback)
         d.addErrback(on_error)
+        return d
 
     def publish_message(self):
         self.tx.basic_publish("Test message", None)
-        self.published_counter += 1
-        if self.published_counter > 999:
+        print "PUT", self.published_counter
+        if self.published_counter >= self.total_messages_to_send:
             self.publisher.stop()
+        self.published_counter += 1
 
     @inlineCallbacks
     def test_pub_and_sub(self):
@@ -87,7 +96,7 @@ class MyTestCase(unittest.TestCase):
         self.message_getter = LoopingCall(self.get_message)
 
         self.publisher.start(0.01)
-        self.message_getter.start(0.01)
+        self.message_getter.start(0.01, False)
         yield self.show_stoper
 
     @inlineCallbacks
@@ -98,9 +107,9 @@ class MyTestCase(unittest.TestCase):
         self.publisher = LoopingCall(self.publish_message)
         self.message_getter = LoopingCall(self.get_message)
         self.disconnector = LoopingCall(self.tx._disconnect)
-        self.disconnector.start(1)
+        self.disconnector.start(5)
         self.publisher.start(0.01)
-        self.message_getter.start(0.01)
+        self.message_getter.start(0.01, False)
         yield self.show_stoper
 
     @inlineCallbacks
@@ -110,7 +119,6 @@ class MyTestCase(unittest.TestCase):
 
         self.publisher = LoopingCall(self.publish_message)
         self.message_getter = LoopingCall(self.get_message, no_ack=False)
-
         self.publisher.start(0.01)
         self.message_getter.start(0.01)
         yield self.show_stoper
@@ -123,11 +131,10 @@ class MyTestCase(unittest.TestCase):
         self.publisher = LoopingCall(self.publish_message)
         self.message_getter = LoopingCall(self.get_message, no_ack=False)
         self.disconnector = LoopingCall(self.tx._disconnect)
-        self.disconnector.start(1)
+        self.disconnector.start(5)
         self.publisher.start(0.01)
-        self.message_getter.start(0.01)
+        self.message_getter.start(0.01, False)
         yield self.show_stoper
-
 
     def tearDown(self):
         self.tx.stopTrying()
